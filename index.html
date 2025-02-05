@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulation Data Graph</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="VUI/styles.css">
+</head>
+<body>
+    <div class="container">
+        <img src="VUI/critical_software_logo.png" alt="Critical Software Logo" class="logo">
+        <div class="classification">
+        </div>
+        <h1>Simulation Data Graph</h1>
+        <div class="form-group">
+            <label for="frequency">Data Acquisition Frequency (0.2 - 1 second):</label>
+            <div class="slider-container">
+                <input type="range" id="frequency" name="frequency" min="0.2" max="1" step="0.1" value="0.2" oninput="updateFrequencyValue()">
+                <span id="frequencyValue" class="slider-value">0.2</span>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="timeRange">Plot Time Range (1 - 75 seconds):</label>
+            <div class="slider-container">
+                <input type="range" id="timeRange" name="timeRange" min="1" max="75" step="1" value="5" oninput="updateTimeRangeValue()">
+                <span id="timeRangeValue" class="slider-value">5</span>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Current Period:</label>
+            <span id="currentPeriod" class="slider-value">NORMAL</span>
+        </div>
+        <div class="status-container">
+            <div class="status">
+                <h2>Latest Thermistor Temperatures</h2>
+                <div class="thermistor-container">
+                    <div>Thermistor 1: <span id="temp1">0</span>°C</div>
+                    <div>Thermistor 2: <span id="temp2">0</span>°C</div>
+                    <div>Thermistor 3: <span id="temp3">0</span>°C</div>
+                    <div>Thermistor 4: <span id="temp4">-1</span>°C</div>
+                </div>
+            </div>
+            <div class="status">
+                <h2>Current Heater Status</h2>
+                <div class="heater-container">
+                    <div>Heater 1: <span id="heater1">OFF</span></div>
+                    <div>Heater 2: <span id="heater2">OFF</span></div>
+                    <div>Heater 3: <span id="heater3">OFF</span></div>
+                    <div>Heater 4: <span id="heater4">OFF</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="graph-container">
+            <div class="graph">
+                <canvas id="temperatureChart"></canvas>
+            </div>
+            <div class="graph">
+                <canvas id="heaterChart"></canvas>
+            </div>
+        </div>
+        <div>
+            <h2>Error Messages</h2>
+            <ul id="errorMessages"></ul>
+        </div>
+    </div>
+    <script>
+        let dataFrequency = 0.2; // Default frequency in seconds
+        let plotTimeRange = 5; // Default plot time range in seconds
+        let syncPlots = false;
+        let temperatureChart;
+        let heaterChart;
+        let updateInterval;
+        let currentPeriod = "NORMAL";
+        let clocks = [];
+        let thermistorTemps = [[], [], [], []];
+        let heaterStatus = [[], [], [], []];
+        let thermistorSetpoints = [0, 0, 0, 0]; // Default setpoints
+        const numPoints = 50; // Number of points to display on the charts
+
+
+        function updateCharts() {
+            const numPoints = plotTimeRange / dataFrequency;
+            // Update the temperature chart
+            temperatureChart.data.labels = clocks.slice(-numPoints).reverse();
+            temperatureChart.data.datasets[0].data = thermistorTemps[0].slice(-numPoints).reverse();
+            temperatureChart.data.datasets[1].data = thermistorTemps[1].slice(-numPoints).reverse();
+            temperatureChart.data.datasets[2].data = thermistorTemps[2].slice(-numPoints).reverse();
+            temperatureChart.data.datasets[3].data = thermistorTemps[3].slice(-numPoints).reverse();
+            
+            if(thermistorSetpoints == 0){
+                temperatureChart.options.scales.y.min = -10;
+                temperatureChart.options.scales.y.max = 10;
+            }else if(thermistorSetpoints != 0){
+                temperatureChart.options.scales.y.min = thermistorSetpoints - 10;
+                temperatureChart.options.scales.y.max = thermistorSetpoints + 10;
+            }
+
+
+
+            temperatureChart.update();
+
+            // Update the heater status chart
+            heaterChart.data.labels = clocks.slice(-numPoints).reverse();
+            heaterChart.data.datasets[0].data = heaterStatus[0].slice(-numPoints).reverse();
+            heaterChart.data.datasets[1].data = heaterStatus[1].slice(-numPoints).reverse();
+            heaterChart.data.datasets[2].data = heaterStatus[2].slice(-numPoints).reverse();
+            heaterChart.data.datasets[3].data = heaterStatus[3].slice(-numPoints).reverse();
+            heaterChart.update();
+
+            // Update the latest temperatures
+            document.getElementById('temp1').innerText = Math.round(thermistorTemps[0][thermistorTemps[0].length - 1]);
+            document.getElementById('temp2').innerText = Math.round(thermistorTemps[1][thermistorTemps[1].length - 1]);
+            document.getElementById('temp3').innerText = Math.round(thermistorTemps[2][thermistorTemps[2].length - 1]);
+            document.getElementById('temp4').innerText = Math.round(thermistorTemps[3][thermistorTemps[3].length - 1]);
+
+            // Update the heater status
+            document.getElementById('heater1').innerText = heaterStatus[0][heaterStatus[0].length - 1] ? 'ON' : 'OFF';
+            document.getElementById('heater2').innerText = heaterStatus[1][heaterStatus[1].length - 1] ? 'ON' : 'OFF';
+            document.getElementById('heater3').innerText = heaterStatus[2][heaterStatus[2].length - 1] ? 'ON' : 'OFF';
+            document.getElementById('heater4').innerText = heaterStatus[3][heaterStatus[3].length - 1] ? 'ON' : 'OFF';
+
+            document.getElementById('currentPeriod').innerText = currentPeriod;
+        }
+
+        function updateFrequencyValue() {
+            const frequencyInput = document.getElementById('frequency').value;
+            document.getElementById('frequencyValue').innerText = frequencyInput;
+            dataFrequency = parseFloat(frequencyInput);
+            clearInterval(updateInterval);
+            updateInterval = setInterval(fetchData, dataFrequency * 1000);
+        }
+
+        function updateTimeRangeValue() {
+            const timeRangeInput = document.getElementById('timeRange').value;
+            document.getElementById('timeRangeValue').innerText = timeRangeInput;
+            plotTimeRange = parseInt(timeRangeInput);
+            updateCharts();
+        }
+
+        async function fetchData() {
+            try {
+                const response = await fetch(`simulation_log.csv?timestamp=${new Date().getTime()}`);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.text();
+                const rows = data.split('\n').slice(1); // Skip header row
+
+                clocks = [];
+                thermistorTemps = [[], [], [], []];
+                heaterStatus = [[], [], [], []];
+
+                rows.forEach(row => {
+                    const cols = row.split(',');
+                    if (cols.length < 10) return; // Skip incomplete rows
+                    clocks.push(cols[0]);
+                    currentPeriod = cols[1].trim(); 
+                    thermistorTemps[0].push(parseFloat(cols[2]));
+                    thermistorTemps[1].push(parseFloat(cols[3]));
+                    thermistorTemps[2].push(parseFloat(cols[4]));
+                    thermistorTemps[3].push(parseFloat(cols[5]));
+                    heaterStatus[0].push(parseInt(cols[6]));
+                    heaterStatus[1].push(parseInt(cols[7]));
+                    heaterStatus[2].push(parseInt(cols[8]));
+                    heaterStatus[3].push(parseInt(cols[9]));
+                });
+
+                // Update the charts and status
+                updateCharts();
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                document.getElementById('errorMessages').innerText = 'Error fetching data: ' + error.message;
+            }
+        }
+
+        window.onload = function() {
+            fetchData();
+            updateInterval = setInterval(fetchData, dataFrequency * 1000);
+        };
+
+        // Initialize the charts
+        const ctx1 = document.getElementById('temperatureChart').getContext('2d');
+        temperatureChart = new Chart(ctx1, {
+            type: 'line',
+            data: {
+                labels: [], // Add your labels here
+                datasets: [
+                    {
+                        label: 'Thermistor 1',
+                        data: [], // Add your data here
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1.5
+                    },
+                    {
+                        label: 'Thermistor 2',
+                        data: [],
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1.5
+                    },
+                    {
+                        label: 'Thermistor 3',
+                        data: [],
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1.5
+                    },
+                    {
+                        label: 'Thermistor 4',
+                        data: [],
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        borderWidth: 1.5
+                    }
+                ]
+            },
+            options: {
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        min: -10,
+                        max: 10,
+                        title: {
+                            display: true,
+                            text: 'Temperature (ºC)'
+                        }
+                    }
+                }
+            }
+        });
+
+        const ctx2 = document.getElementById('heaterChart').getContext('2d');
+        heaterChart = new Chart(ctx2, {
+            type: 'line',
+            data: {
+                labels: [], // Add your labels here
+                datasets: [
+                    {
+                        label: 'Heater 1',
+                        data: [], // Add your data here
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1.5
+                    },
+                    {
+                        label: 'Heater 2',
+                        data: [],
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1.5
+                    },
+                    {
+                        label: 'Heater 3',
+                        data: [],
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1.5
+                    },
+                    {
+                        label: 'Heater 4',
+                        data: [],
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        borderWidth: 1.5
+                    }
+                ]
+            },
+            options: {
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 1,
+                        ticks: {
+                            stepSize: 1,
+                            callback: function(value) {
+                                return value === 1 ? 'ON' : 'OFF';
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Status'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
